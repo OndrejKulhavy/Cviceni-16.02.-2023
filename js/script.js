@@ -13,7 +13,7 @@ class Product {
         this.images = images;
     }
 
-    getRating() {
+    getRatingAsEmojis() {
         let count = Math.round(this.rating);
         let rating = "";
         for (let i = 0; i < count; i++) {
@@ -23,7 +23,7 @@ class Product {
     }
 
     getCardHTML() {
-        let html = `
+        return `
         <div class="card m-4" style="width: 18rem;">
             <img src="${this.images[1]}" height="200px" class="card-img-top" alt="...">
         <div class="card-body">
@@ -33,44 +33,53 @@ class Product {
         <ul class="list-group list-group-flush">
             <li class="list-group-item">Price: ${this.price} $</li>
             <li class="list-group-item">Stock: ${this.stock} items</li>
-            <li class="list-group-item">Rating: ${this.getRating()}</li>
+            <li class="list-group-item">Rating: ${this.getRatingAsEmojis()}</li>
         </ul>
         <div class="card-body">
             <button type="button" class="btn btn-primary">Add to cart</button>
         </div>
         </div>
         `;
-        return html;
     }
 
-    getTableRow() {
-        let html = `
+    getTableRowHTML() {
+        return `
         <tr>
-            <td>${this.id}</td>
             <td>${this.title}</td>
             <td>${this.description}</td>
             <td>${this.price}</td>
             <td>${this.discountPercentage}</td>
-            <td>${this.getRating()}</td>
+            <td>${this.getRatingAsEmojis()}</td>
             <td>${this.stock}</td>
             <td>${this.brand}</td>
             <td>${this.category}</td>
         </tr>
         `;
-        return html;
     }
 }
 
 class Catalog {
     constructor() {
         this.products = [];
-        if (localStorage.getItem("products") == null || localStorage.getItem("products") == "[]") {
-            this.loadProductsFromWeb();
-            this.saveToLocalStorage();
+        this.loadProducts();
+    }
+
+    loadProducts() {
+        if (localStorage.getItem("products") == null) {
+            // if the products item is not in the local storage, then load the products list from the web
+            this.getProductsFromWeb();
+            console.log("load from web");
+
+        } else if (localStorage.getItem("products") != null) {
+            // if the products item is in the local storage, then load the products list from the local storage
+            this.getProductsFromLocalStorage();
+            console.log("load from local storage");
+
         } else {
-            this.loadFromLocalStorage();
+            // if there is an error, clear the local storage and show an error message
+            this.clearLocalStorage();
+            console.error("Error loading products");
         }
-        console.log(this.products);
     }
 
     addProduct(product) {
@@ -81,25 +90,24 @@ class Catalog {
         return this.products;
     }
 
-    loadProductsFromWeb() {
-        let url = 'https://dummyjson.com/products';
-        let progressBar = document.getElementById("progress-bar");
-        progressBar.style.width = "0%";
-        progressBar.style.visibility = "visible";
-        const req = new XMLHttpRequest();
-        req.open("GET", url);
+    getProductsFromWeb() {
+        let req = new XMLHttpRequest();
+        req.open("GET", "https://dummyjson.com/products");
         req.send();
 
-        //print progress in %
         req.onprogress = (event) => {
             let percent = (event.loaded / event.total) * 100;
-            progressBar.style.width = percent + "%";
-            console.log(percent);
+            this.updateProgressBar(true, percent);
         }
 
         req.onload = (e) => {
             let data = JSON.parse(req.responseText);
-            console.log(data);
+
+            if (data == null || data == undefined || data == "") {
+                console.error("Error while parsing products from web");
+                return;
+            }
+
             data["products"].forEach(product => {
                 this.addProduct(new Product(
                     product.id,
@@ -115,10 +123,13 @@ class Catalog {
                     product.images
                 ));
             });
+
+            this.saveToLocalStorage();
             this.printProducts();
-            console.log(e.total);
-            progressBar.style.visibility = "hidden";
+            this.updateProgressBar(false, 0);
+
         }
+
         req.onerror = (error) => {
             console.log(error);
         }
@@ -127,12 +138,13 @@ class Catalog {
     saveToLocalStorage() {
         localStorage.setItem("products", JSON.stringify(this.products));
     }
-    removeLocalStorage() {
+    clearLocalStorage() {
         localStorage.removeItem("products");
     }
 
-    loadFromLocalStorage() {
+    getProductsFromLocalStorage() {
         let products = JSON.parse(localStorage.getItem("products"));
+
         products.forEach(product => {
             this.addProduct(new Product(
                 product.id,
@@ -148,29 +160,49 @@ class Catalog {
                 product.images
             ));
         });
+
         this.printProducts();
     }
 
+    updateProgressBar(isVisible, percent) {
+        let parentDiv = document.getElementById("progress-bar");
+        let progressBar = document.getElementById("progressBar");
+
+        parentDiv.style.visibility = isVisible ? "visible" : "hidden";
+        progressBar.style.width = percent + "%";
+    }
 
     printProducts() {
         let html = "";
-
         let contentView = document.getElementById("content");
-        let mode = contentView.getAttribute("data-mode");
-        if (mode == "cards") {
-            this.products.forEach(product => {
-                html += product.getCardHTML();
-            });
-        } else if (mode == "table") {
-            this.products.forEach(product => {
-                html += product.getTableRow();
-            });
+        const MODE = contentView.getAttribute("data-mode");
+
+        if (MODE == null || MODE == "" || MODE == undefined) {
+            console.error("Required attribute 'data-mode' not found");
+            return;
         }
 
-        document.getElementById("content").innerHTML = html;
-        console.log(html);
-    }
+        switch (MODE) {
+            case "cards":
+                this.products.forEach(product => {
+                    html += product.getCardHTML();
+                });
+                break;
 
+            case "table":
+                html += ` <tr><th>Title</th><th>Description</th><th>Price</th><th>Discount</th><th>Rating</th><th>Stock</th><th>Brand</th><th>Category</th></tr>`;
+                this.products.forEach(product => {
+                    html += product.getTableRowHTML();
+                });
+                break;
+
+            default:
+                console.error("Error printing products on page");
+        }
+        document.getElementById("content").innerHTML = html;
+    }
 }
 
-let catalog = new Catalog();
+onload = () => {
+    let catalog = new Catalog();
+}
